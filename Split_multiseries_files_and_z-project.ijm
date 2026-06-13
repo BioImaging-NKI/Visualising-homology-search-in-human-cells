@@ -14,16 +14,26 @@
  * version 1.3 - September 2023:
  * - Added feature to extract a single channel. Doesn't work together with 'Auto most intense slice' and 'Auto sharpest slice'.
  * 
- * Bram van den Broek (b.vd.broek@nki.nl), Netherlands Cancer Institute, 2014-2022
+ * version 1.4 - December 2025:
+ * - Preserve metadata in output (but not the ome-xml metadata)
  * 
+ * Version 1.5 - February 2026:
+ * - Possibility to first copy the files to the local temp drive before processing (faster for large files / files with many series over the network)
+ * 
+ * Version 1.6 - June 2026:
+ * - Better renaming of strange characters
+ * 
+ *  Author: Bram van den Broek, Netherlands Cancer Institute, 2014-2026
+ *  @bramvdbroek at https://image.sc
  * 
  */
 
-version = 1.3;
+version = 1.6;
 
 #@File(label = "Input directory", style = "directory") input
 #@File(label = "Output directory", style = "directory") output
 #@String(label = "Input file extension", value = ".lif") fileExtension
+#@ Boolean (label = "Copy files to local Temp folder before processing? (faster for large files over the network)", value=false) copyFiles
 #@Integer(label = "Extract only channel (-1 for all channels)", value=-1) extractChannel
 #@Boolean(label = "Use virtual stack to save memory?", value=false) useVirtual
 //#@String(label = "Output file format (Not yet implemented!)",choices={"TIFF", "OME-TIFF (retains all metadata)", "HDF5"}) output_format
@@ -32,7 +42,7 @@ version = 1.3;
 #@String(label = "Projection/selection type",choices={"Average Intensity", "Max Intensity", "Min Intensity", "Sum Slices", "Standard Deviation", "Median", "Select single slice", "Auto most intense slice", "Auto sharpest slice"}) projection_type
 #@Integer(label = "Channel for 'Auto most intense slice'", value=1, min=1) auto_channel
 #@Integer(label = "XY binning", value=1, min=1) binning
-#@Boolean(label = "Also save not-projected series", value=false) save_not_projected
+#@Boolean(label = "Also save not-projected series", value=true) save_not_projected
 
 saveSettings();
 
@@ -139,26 +149,39 @@ function processFile(input, outputSubfolder, file) {
 	run("Close All");
 	Ext.setId(input + File.separator + file);
 	Ext.getSeriesCount(nr_series);
+	print(File.getName(file)+" | Exporting "+nr_series+" series...");
+	
+	if(copyFiles) {
+		tempFolder = getDirectory("temp");
+		print("Copying "+File.getName(file)+" to "+tempFolder);
+		showStatus("Copying "+File.getName(file)+" to "+tempFolder);
+		File.copy(input + File.separator + file, tempFolder + File.separator + file);
+		filePath = tempFolder + File.separator + file;
+		print("\\Update:");
+	}
+	else filePath = input + File.separator + file;
 
 	for(i=0;i<nr_series;i++) {
+
 		if(useVirtual) {
-			if(extractChannel == -1) run("Bio-Formats Importer", "open=["+input + File.separator + file+"] autoscale color_mode=Default view=Hyperstack stack_order=XYCZT use_virtual_stack series_"+i+1);
-			else run("Bio-Formats Importer", "open=["+input + File.separator + file+"] autoscale color_mode=Default specify_range view=Hyperstack stack_order=XYCZT use_virtual_stack c_begin="+extractChannel+" c_end="+extractChannel+" c_step=1 series_"+i+1);
+			if(extractChannel == -1) run("Bio-Formats Importer", "open=["+filePath+"] autoscale color_mode=Default view=Hyperstack stack_order=XYCZT use_virtual_stack series_"+i+1);
+			else run("Bio-Formats Importer", "open=["+filePath+"] autoscale color_mode=Default specify_range view=Hyperstack stack_order=XYCZT use_virtual_stack c_begin="+extractChannel+" c_end="+extractChannel+" c_step=1 series_"+i+1);
 		}
 		else {
-			if(extractChannel == -1) run("Bio-Formats Importer", "open=["+input + File.separator + file+"] autoscale color_mode=Default view=Hyperstack stack_order=XYCZT series_"+i+1);
-			else run("Bio-Formats Importer", "open=["+input + File.separator + file+"] autoscale color_mode=Default specify_range view=Hyperstack stack_order=XYCZT c_begin="+extractChannel+" c_end="+extractChannel+" c_step=1 series_"+i+1);
+			if(extractChannel == -1) run("Bio-Formats Importer", "open=["+filePath+"] autoscale color_mode=Default view=Hyperstack stack_order=XYCZT series_"+i+1);
+			else run("Bio-Formats Importer", "open=["+filePath+"] autoscale color_mode=Default specify_range view=Hyperstack stack_order=XYCZT c_begin="+extractChannel+" c_end="+extractChannel+" c_step=1 series_"+i+1);
 		}
 		seriesName = getTitle();
-		seriesName = replace(seriesName,"\\/","-");	//replace slashes by dashes in the seriesName
-		//run("Bio-Formats Exporter", "save=["+dir+seriesName+".ome.tif] compression=LZW");
-//		print(input + File.separator + seriesName);
-//		outputPath = output + File.separator + substring(seriesName,0,lastIndexOf(seriesName, "."));	//Doesn't quite do the job
+		seriesName = replace(seriesName,"/","-");	//replace slashes by dashes
+		seriesName = replace(seriesName,"\\","-");	//replace backslashes by dashes
+		seriesName = replace(seriesName," ","_");	//replace spaces by underscores
+		seriesName = replace(seriesName,"_-_","__");
 		outputPath = output + File.separator + seriesName;
+		metadata = getMetadata("Info");
 
 		// To do:
 		// - Export in other file formats
-		// - Read series names and only save as +i+1 if names are the same
+		// - Read series names and only save as +i+1 if names are the same - EDIT: already fixed in a subsequent macro
 
 		Ext.getSizeZ(sizeZ);
 		if(sizeZ>1 && makeProjection==true) {
@@ -197,6 +220,7 @@ function processFile(input, outputSubfolder, file) {
 			}
 			outputPathProjection = outputPath + "_" + projection_suffix;
 			if(binning > 1) run("Bin...", "x="+binning+" y="+binning+" z="+binning+" bin=Average");
+			setMetadata("Info", metadata);
 			if(!File.exists(outputPathProjection + ".tif")) saveAs("Tiff",outputPathProjection);	//Add i+1, because sometimes the series names are all the same (e.g. Tilescan experiments)
 			else saveAs("Tiff",outputPathProjection + "_" +i+1);	//Add i+1, because sometimes the series names are all the same (e.g. Tilescan experiments)
 
@@ -204,13 +228,21 @@ function processFile(input, outputSubfolder, file) {
 		}
 		if(save_not_projected==true) {
 			if(binning > 1) run("Bin...", "x="+binning+" y="+binning+" bin=Average");
+			setMetadata("Info", metadata);
 			if(!File.exists(outputPath + ".tif")) saveAs("Tiff",outputPath);	//Add i+1, because sometimes the series names are all the same (e.g. Tilescan experiments)
 			else saveAs("Tiff",outputPath + "_" +i+1);	//Add i+1, because sometimes the series names are all the same (e.g. Tilescan experiments)
 		}
 		close();
 	}
 	current_image_nr++;
-	
+
+	//Delete temp file
+	if(copyFiles) {
+		File.delete(tempFolder + File.separator + file);
+		print("\\Update:");
+	}
+
+
 	endtime = getTime();
 	processtime = processtime+(endtime-starttime)/60000;
 }
