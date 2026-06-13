@@ -43,12 +43,14 @@ After running the `Crop_nuclei_and_objectMaps_for_Ilastik.ijm` macro, use the `S
 
 6.	`Segment_with_labkit_and_merge.ijm`: Segment 53BP1 foci or RAD51 structures with LabKit pixel classifier, resulting in a binary timelapse or a 3D z-stack mask, depending on the input. It runs an existing LabKit classifier file, extracts the segmented mask and merges it as channel (red) with the selected segmentation channel of the original image (grays).
 7.	For timelapse images: run TrackMate on the timelapse mask from Labkit to follow individual foci/structures within each nucleus.
+    
     <img width="240" height="240" alt="Path from ID2695 to ID2585_track4-3" src="https://github.com/user-attachments/assets/87cc3e61-0f8e-4fb5-be2e-d4708cb5aabe" />
+    
 8.	For 3D (fixed images) Connected component analysis on the segmented masks from Labkit to create 3D object maps, plus maximum intensity projections for 2D analysis. Optionally use `Split_multiseries_files_and_z-project.ijm` again to create maximum intensity z-projections for analysis of the structures in 2D.
 9.	`Skeletonize_and_measure_labels.ijm`: Skeletonize the label images with structures (2D / 3D), and measure length and shape features using CLIJ and MorphoLibJ. Due to the width of the structures the skeletons do not stretch all the way to the ends. Roundish structures sometimes ends up with a very small skeleton length, even a single pixel. This effect is compensated in the  'Totallength' output:
     - For every endpoint the shortest distance to the edge of the label is added to the skeleton length.
     - For structures with only 1 endpoint (near circles or spheres), this distance is added twice.
-    
+    <br>
     <img width="400" alt="Skeletonized_objects_2D" src="https://github.com/user-attachments/assets/83e1da34-73a9-4893-98c9-658844dd97ee" />
     <img width="675" alt="image" src="https://github.com/user-attachments/assets/009c15a1-c80c-486a-a270-4782032316d1" />
 
